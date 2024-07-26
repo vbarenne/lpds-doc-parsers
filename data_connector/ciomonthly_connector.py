@@ -9,6 +9,7 @@ from data_connector.base_connector import BaseConnector
 from utils.pdf_helper.doc_helper import get_date_from_name, get_name_from_cover
 from utils.pdf_helper.text_helper import is_header_match, remove_footer, get_char_colors, remove_hyphenation, concat_lines, remove_uncommon_utf8, clean_text, is_within_rectangles, get_colors
 import numpy as np
+from datetime import datetime 
 
 class CIOMonthlyConnector(BaseConnector):
     doc_type = 'CIO Monthly'
@@ -24,10 +25,9 @@ class CIOMonthlyConnector(BaseConnector):
         page_num = 1
         is_sec_element = True
 
-        pub_date = get_date_from_name(os.path.basename(fp), cls.doc_type)
-        doc_name = get_name_from_cover(cls.doc_type, pages[0], is_all_cap_title=False)
+        doc_name, pub_date = [el.get_text().strip() for el in pages[2] if isinstance(el, LTTextBoxHorizontal)][:2]
+        pub_date = datetime.strptime(pub_date, '%d %B %Y').strftime('%Y-%m-%d')
         src_doc = os.path.basename(fp).replace('.pdf', '')
-
         first_page_sec = cls.get_first_page(page = pages[0])
         sec_json = cls.format_section(pub_date=pub_date, src_doc=src_doc, pg_num=page_num,
                                       doc_name=doc_name, sec_title=cls.first_page, sec_header='',
@@ -157,8 +157,4 @@ class CIOMonthlyConnector(BaseConnector):
         header = concat_lines(''.join(header_list))
         text = clean_text(text_list)
         return header, text
-
-
-    
-
 

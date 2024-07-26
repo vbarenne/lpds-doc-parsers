@@ -19,7 +19,7 @@ class CMOConnector(BaseConnector):
     sec_title_font = 12
 
     @classmethod
-    def get_json_all(cls, fp):
+    def get_all_components(cls, fp):
         pages = list(extract_pages(fp))
         json_list = []
 
@@ -30,8 +30,7 @@ class CMOConnector(BaseConnector):
         subtitle = left_sections[1][0]
         market_opportunity, company_profile, key_risks = "", "", ""
         src_doc = os.path.basename(fp).replace('.pdf', '')
-        pub_date = cls.get_pub_date(pages[0])
-        equity_name = title
+        pub_date, equity_name = cls.get_pub_date_and_equity(pages)
 
         for sec in left_sections[2:]: 
             if sec[0].upper().startswith("MARKET OPPORTUNITY"):
@@ -46,30 +45,18 @@ class CMOConnector(BaseConnector):
                 key_risks = sec[1]
 
         key_information = cls.get_key_information(pages) 
-
-        equity_json = {
-                    "equity": equity_name,
-                    "industries": [key_information.loc["sector"].item(), key_information.loc["subsector"].item()],
-                    "country": key_information.loc["country"].item(),
-                    "rating": key_information.loc["julius baer research rating"].item(),
-                    "risk_rating": None,
-                    "isin": key_information.loc["isin"].item(),
-                    "bbg_ticker": None, 
-                    "currency": key_information.loc["currency"].item().upper(), 
-                    "investment_thesis": market_opportunity + key_risks,
-                    "company_profile": company_profile,
-                    "strengths": None,
-                    "weaknesses": None,
-                    "opportunities": None,
-                    "threats": None,
-                    "additional_information": None,
-                    "source_document": src_doc,
-                    "document_name": title + " " + subtitle,
-                    "publication_date": pub_date,
-                    "document_type": cls.doc_type
-                    }
-
-        return equity_json
+        equity_json = cls.format_equity_info(equity_name, 
+                                             [key_information.loc["sector"].item() , key_information.loc["subsector"].item()], 
+                                             key_information.loc["country"].item(), 
+                                             key_information.loc["julius baer research rating"].item(), 
+                                             risk_rating = None, 
+                                             isin = key_information.loc["isin"].item(), 
+                                             bbg_ticker = None, 
+                                             currency = key_information.loc["currency"].item().upper())
+                    
+        metadata = cls.format_metadata(pub_date, src_doc, title + " " + subtitle, cls.doc_type)
+    
+        return equity_json, metadata, company_profile, market_opportunity, key_risks
 
 
     @classmethod
@@ -141,18 +128,8 @@ class CMOConnector(BaseConnector):
             return header, text
     
     @classmethod
-    def get_rating(cls, src_doc):
-        if "Buy" in src_doc:
-            return "Buy"
-        if "Hold" in src_doc:
-            return "Hold"
-        if "Sell" in src_doc:
-            return "Sell"
-        else:
-            return "Unknown"   
-
-    @classmethod
-    def get_pub_date(cls, first_page):
+    def get_pub_date_and_equity(cls, pages):
+        first_page = pages[0]
         first_line_y0 = max([el.y0 for el in first_page if isinstance(el, LTLine)])
         header_elements_x0 = [el.x0 for el in first_page if el.y0 > first_line_y0]
         date = [el for el in first_page if (el.y0 > first_line_y0 and el.x0 == max(header_elements_x0))][0].get_text()
@@ -160,5 +137,10 @@ class CMOConnector(BaseConnector):
         date_str = date.split(",")[0]
         date_str = datetime.strptime(date_str, '%d %B %Y')
         date_str = date_str.strftime("%Y-%m-%d")
-        return date_str
+
+        for el in pages[0]:
+            if isinstance(el, LTTextBoxHorizontal) and el.x0 >250 and "investment product" in el.get_text().lower():
+                equity_name = el.get_text().split("\n")[1]
+                
+        return date_str, equity_name
 

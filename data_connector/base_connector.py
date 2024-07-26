@@ -68,7 +68,28 @@ class BaseConnector:
                     'section_text': sec_text}
         return sec_json
 
+    @classmethod
+    def format_metadata(cls, pub_date, src_doc, doc_name, doc_type):
+        metadata = {
+                    'publication_date': pub_date,
+                    'source_document': src_doc,
+                    'document_name': doc_name,
+                    'document_type': doc_type}
+        return metadata
 
+    @classmethod
+    def format_equity_info(cls, equity, industries, country, rating, risk_rating, isin, bbg_ticker, currency):
+        equity_info = {
+                    "equity": equity,
+                    "industries": industries,
+                    "country": country,
+                    "rating": rating,
+                    "risk_rating": risk_rating,
+                    "isin": isin,
+                    "bbg_ticker": bbg_ticker, 
+                    "currency": currency}
+        return equity_info
+    
 def demo():
     fp = './data/test_file.pdf'
     connector = BaseConnector()

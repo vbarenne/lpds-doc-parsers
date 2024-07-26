@@ -154,8 +154,13 @@ def get_colors(element: LTTextContainer) -> set[str]:
             break
     return colors_set
 
-
-
+def get_jb_rating(txt):
+    if "buy" in txt.lower():
+        return "Buy"
+    if "hold" in txt.lower():
+        return "Hold"
+    if "sell" in txt.lower():
+        return "Sell"
 
 
 

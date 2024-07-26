@@ -38,12 +38,12 @@ def table_extractor(page, ymin, ymax, xmin = -1, xmax =10000, row_lines = True, 
     # Format each row in table to match the number of columns
     for row in table:   
         if len(row) == n_cols:
-            table_formatted.append([clean_text(el.get_text().lower()) for el in row])
+            table_formatted.append([clean_text(el.get_text()) for el in row])
         else: 
             row_good_format = []
             for i in range(len(col_lim)-1):
                 xmin_col, xmax_col = col_lim[i], col_lim[i+1]
-                col_element = clean_text([el.get_text().lower() for el in row if el.x1 > xmin_col and el.x1 <= xmax_col])
+                col_element = clean_text([el.get_text() for el in row if el.x1 > xmin_col and el.x1 <= xmax_col])
                 row_good_format.append(col_element)
             table_formatted.append(row_good_format)
     table_formatted = np.array(table_formatted)

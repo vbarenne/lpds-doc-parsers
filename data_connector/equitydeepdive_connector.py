@@ -16,7 +16,7 @@ class EquityDeepDiveConnector(BaseConnector):
     sec_title_font = 12
 
     @classmethod
-    def get_json_all(cls, fp):
+    def get_all_components(cls, fp):
         pages = list(extract_pages(fp))
         json_list = []
 
@@ -31,31 +31,10 @@ class EquityDeepDiveConnector(BaseConnector):
         rating = cls.get_rating(src_doc)
 
         investment_thesis, company_profile, free_text = cls.get_first_page(pages[0])
-        strengths, weaknesses, opportunities, threats = cls.get_swot_analysis(pages[1])
-
-        equity_json = {
-                    "equity": equity_name,
-                    "industries": industries,
-                    "country": country,
-                    "rating": rating,
-                    "risk_rating": None,
-                    "isin": None,
-                    "bbg_ticker": None, 
-                    "currency": None, 
-                    "investment_thesis": investment_thesis,
-                    "company_profile": company_profile,
-                    "strengths": strengths,
-                    "weaknesses": weaknesses,
-                    "opportunities": opportunities,
-                    "threats": threats,
-                    "additional_information": free_text,
-                    "source_document": src_doc,
-                    "document_name": doc_name,
-                    "publication_date": pub_date,
-                    "document_type": cls.doc_type
-                    }
-
-        return equity_json
+        strengths, weaknesses, opportunities, threats = cls.get_swot_analysis(pages[1])     
+        metadata = cls.format_metadata(pub_date, src_doc, doc_name, cls.doc_type)
+        equity_json = cls.format_equity_info(equity_name, industries, country, rating, None, None, None, None)
+        return equity_json, metadata, investment_thesis, company_profile, free_text, strengths, weaknesses, opportunities, threats
 
 
     @classmethod

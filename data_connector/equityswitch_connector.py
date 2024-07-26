@@ -12,6 +12,7 @@ import numpy as np
 import pandas as pd
 from datetime import datetime
 from fuzzywuzzy import fuzz
+from utils.table_extractor import table_extractor, get_n_th_line_height
 
 class EquitySwitchConnector(BaseConnector):
     doc_type = 'Equity Switch Idea'
@@ -19,36 +20,25 @@ class EquitySwitchConnector(BaseConnector):
     sec_title_font = 12
 
     @classmethod
-    def get_json_all(cls, fp):
+    def get_all_components(cls, fp):
         pages = list(extract_pages(fp))
         json_list = []
 
         src_doc = os.path.basename(fp).replace('.pdf', '')
         pub_date, doc_name, equity1_shortname, equity2_shortname, rating1, rating2 = cls.get_title_page_info(pages)
 
-        comparaison_table = cls.extract_comparaison_table(pages[1])
-        equity1, equity2 = comparaison_table.loc[["Equity"]].values.flatten()
-        country1, country2 = comparaison_table.loc[["Country"]].values.flatten()
-        sector1, sector2 = comparaison_table.loc[["Sector"]].values.flatten()
-        subsector1, subsector2 = comparaison_table.loc[["Sub-sector"]].values.flatten()
-        ccy1, ccy2 = comparaison_table.loc[["Ccy"]].values.flatten()
-        risk_rating1, risk_rating2 = comparaison_table.loc[["JB product risk rating"]].values.flatten()
-        rating1, rating2 = comparaison_table.loc[["JB Research / MS rating"]].values.flatten()
-        ticker1, ticker2 = comparaison_table.loc[["BBG Ticker"]].values.flatten()
+        comparaison_table = cls.extract_comparaison_table(pages[1], equity2_shortname)
+        equity_json1, equity_json2 = cls.get_equity_json(comparaison_table)
 
         first_page_sec = cls.get_page_elements(pages[0])
         first_page_sec = cls.get_sections(first_page_sec)
-        whats_the_story, texta, textb = first_page_sec[0][1], first_page_sec[1][1], first_page_sec[2][1]
+        whats_the_story= first_page_sec[0][1]
+        texta, headera =  first_page_sec[1][1], first_page_sec[1][0]
+        textb, headerb =  first_page_sec[2][1], first_page_sec[2][0]
 
-        json1 = cls.get_equity_json(equity1, sector1, subsector1, country1, rating1, risk_rating1, ticker1, ccy1, 
-                whats_the_story + texta, "", src_doc, doc_name, pub_date)
-                
-        json2 = cls.get_equity_json(equity2, sector2, subsector2, country2, rating2, risk_rating2, ticker2, ccy2, 
-                whats_the_story + textb, "", src_doc, doc_name, pub_date)
-
-        return [json1, json2]
-
-
+        metadata = cls.format_metadata(pub_date, src_doc, doc_name, cls.doc_type)
+        return equity_json1, equity_json2, metadata, whats_the_story, headera, texta, headerb, textb, comparaison_table
+    
     @classmethod
     def get_page_elements(cls, page):
         left_elements, right_elements = [], []
@@ -108,26 +98,22 @@ class EquitySwitchConnector(BaseConnector):
             return header, text
     
     @classmethod
-    def extract_comparaison_table(cls, page):
-        keys, equity_a, equity_b = [], [], []
-        last_line_y0 = min([el.y0 for el in page if isinstance(el, LTLine)])
-        first_line_y0 = max([el.y0 for el in page if isinstance(el, LTLine)])
+    def extract_comparaison_table(cls, page, equity2_shortname):
+        ymax = [el.y0 for el in page if isinstance(el, LTTextBoxHorizontal) and el.get_text().startswith("COMPARISON")][0]
+        ymin = get_n_th_line_height(page, 0)
+        lines = np.unique([el.y0 for el in page if isinstance(el, LTLine) and el.y0 < ymax])
+        ymax, yother = np.partition(lines, -2)[-2], np.partition(lines, -1)[-1]
 
-        for el in page:
-            if el.y0 <= first_line_y0 and el.y0 >= last_line_y0 and isinstance(el, LTTextBoxHorizontal): 
-                if el.x0 <50:
-                    keys.append(clean_text(el.get_text()))
-                elif el.x0 >= 50 and el.x0 < 150:
-                    equity_a.append(clean_text(el.get_text()))
-                elif el.x0 >= 150:
-                    equity_b.append(clean_text(el.get_text()))
-                    
-        keys = ["Equity"] + keys
-        comparaison_table = np.stack([keys, equity_a, equity_b], axis =1)
-        comparaison_table = pd.DataFrame(data=comparaison_table[:,1:],    # values
-             index=comparaison_table[:,0],    # 1st column as index
-             columns=["Equity1", "Equity2"])  # 1st row as the column names
-        
+        comparaison_table = table_extractor(page, ymin, ymax, has_header = False)  
+        equity_names = [clean_text(el.get_text()) for el in page if isinstance(el, LTTextBoxHorizontal) and el.y0 >ymax and el.y0 < yother and el.x0 <250]
+        equity2 = "VISA"
+        if len(equity_names)<2:
+            equity1 = equity_names[0].lower().split(equity2_shortname.lower())[0]
+            equity2 = equity_names[0].lower().split(equity1)[1]
+            equity_names = [equity1.capitalize(), equity2.capitalize()]
+        comparaison_table.loc["Equity"] = equity_names
+        comparaison_table.columns = ["Equity1", "Equity2"]
+
         return comparaison_table
         
 
@@ -157,27 +143,10 @@ class EquitySwitchConnector(BaseConnector):
             return "Unknown"   
 
     @classmethod
-    def get_equity_json(cls, equity, sector, subsector, country, rating, risk_rating, ticker, currency, investment_thesis, company_profile,
-                        src_doc, doc_name, pub_date):
-        equity_json = {
-            "equity": equity,
-            "industries": [sector + subsector],
-            "country": country,
-            "rating": rating,
-            "risk_rating": risk_rating,
-            "isin": None,
-            "bbg_ticker": ticker, 
-            "currency": currency, 
-            "investment_thesis": investment_thesis,
-            "company_profile": company_profile,
-            "strengths": None,
-            "weaknesses": None,
-            "opportunities": None,
-            "threats": None,
-            "additional_information": None,
-            "source_document": src_doc,
-            "document_name": doc_name,
-            "publication_date": pub_date,
-            "document_type": cls.doc_type
-            }
-        return equity_json
+    def get_equity_json(cls, comparaison_table):
+        json_list = []
+        for equity_nbr in ["Equity1", "Equity2"]:
+            equity, isin, country, sector, subsector, ccy, risk_rating, rating, ticker = comparaison_table.loc[["Equity", "ISIN", "Country", "Sector", "Sub-sector", "Ccy", "JB product risk rating", "JB Research / MS rating", "BBG Ticker"]][equity_nbr].values
+            equity_json = cls.format_equity_info(equity, [sector] + [subsector], country, rating, risk_rating, isin, ticker, ccy.upper())
+            json_list.append(equity_json)             
+        return json_list
