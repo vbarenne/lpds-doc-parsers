@@ -61,7 +61,7 @@ class EquityDeepDiveConnector(BaseConnector):
     @classmethod
     def get_first_page(cls, page):
         left_elements, right_elements = [], []
-        is_investment_thesis = False
+        is_investment_thesis, is_performance = False, False
 
         for element in list(page)[0:]:
             if not isinstance(element, LTTextBoxHorizontal):
@@ -73,13 +73,13 @@ class EquityDeepDiveConnector(BaseConnector):
             if element.y0 >=50 and is_investment_thesis: 
                 if element.x0 < cls.left_sec_x0:
                     left_elements.append(element)
-                elif element.x0 >= cls.left_sec_x0:
+                elif element.x0 >= cls.left_sec_x0 and not is_performance:
+                    if not is_performance: 
+                        is_performance = "Performance \n" in element.get_text()
                     right_elements.append(element)
 
         elements = left_elements + right_elements
-        elements_cutoff = np.where([el.get_text().startswith("Performance") for el in elements])[0].min()
-        elements = elements[:elements_cutoff]
-
+            
         sections = cls.get_sections(elements)
         investment_thesis, company_profile = "unknown", "unknown"
         free_text = []
@@ -111,6 +111,8 @@ class EquityDeepDiveConnector(BaseConnector):
 
         for i, element in enumerate(elements):
             header, txt = cls.get_header_text(element)
+            if i == len(elements)-1:
+                txt = txt.split("Performance")[0]
             if header!="":
                 if current_header !="":
                     sections.append([current_header, "".join(curr_sec)])

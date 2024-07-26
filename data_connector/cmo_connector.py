@@ -10,6 +10,8 @@ from utils.pdf_helper.text_helper import clean_text, is_text_in_font_size, conca
 from settings import JB_LEGAL_DISCLAIMER
 import numpy as np
 from datetime import datetime
+from utils.table_extractor import table_extractor, get_n_th_line_height 
+import pandas as pd
 
 class CMOConnector(BaseConnector):
     doc_type = 'CMO Equity'
@@ -20,8 +22,6 @@ class CMOConnector(BaseConnector):
     def get_json_all(cls, fp):
         pages = list(extract_pages(fp))
         json_list = []
-
-
 
         left_elements = cls.get_left_elements(pages[0])
         left_sections = cls.get_sections(left_elements, 11)
@@ -45,17 +45,17 @@ class CMOConnector(BaseConnector):
             elif sec[0].upper().startswith("KEY RISKS"):
                 key_risks = sec[1]
 
-        key_information = cls.get_key_information(pages[1]) 
+        key_information = cls.get_key_information(pages) 
 
         equity_json = {
                     "equity": equity_name,
-                    "industries": [key_information["Sector"], key_information["Subsector"]],
-                    "country": key_information["Country"],
-                    "rating": key_information["Julius baer research rating"],
+                    "industries": [key_information.loc["sector"].item(), key_information.loc["subsector"].item()],
+                    "country": key_information.loc["country"].item(),
+                    "rating": key_information.loc["julius baer research rating"].item(),
                     "risk_rating": None,
-                    "isin": key_information["Isin"],
+                    "isin": key_information.loc["isin"].item(),
                     "bbg_ticker": None, 
-                    "currency": key_information["Currency"].upper(), 
+                    "currency": key_information.loc["currency"].item().upper(), 
                     "investment_thesis": market_opportunity + key_risks,
                     "company_profile": company_profile,
                     "strengths": None,
@@ -94,26 +94,15 @@ class CMOConnector(BaseConnector):
         return left_elements
 
     @classmethod
-    def get_key_information(cls, page):
-        left_column, right_column = [], []
-        is_key_information, is_note_source = False, False
-        for element in list(page):
-            if not isinstance(element, LTTextBoxHorizontal):
-                continue
-            if not is_note_source and is_key_information :
-                is_note_source = element.get_text().startswith("Source:") or element.get_text().startswith("Note:")
-
-            if is_key_information and not is_note_source and element.x0 > 300 and element.x0<400:
-                left_column.append(clean_text(element.get_text()).capitalize())
-            elif is_key_information and not is_note_source and element.x0 > 400:
-                right_column.append(clean_text(element.get_text()).capitalize())
-
-            if not is_key_information:
-                is_key_information = element.get_text().upper().startswith("KEY INFORMATION")
-        
-        key_info = dict(zip(left_column, right_column))
-        
-        return key_info
+    def get_key_information(cls, pages):
+        page = pages[1]
+        elements = pd.DataFrame(data = [[el.x0, el.y0, el.get_text().lower()] for el in page if isinstance(el, LTTextBoxHorizontal)],
+                                columns = ["x0", "y0", "text"])
+        key_info_y = elements[elements["text"].str.startswith("key information")]["y0"].item()
+        ymax = max([el.y0 for el in page if (isinstance(el, LTLine) and el.x0 >cls.left_sec_x0 and el.y0 < key_info_y)])
+        ymin = get_n_th_line_height(page, 0)
+        key_information = table_extractor(page, ymin, ymax, xmin = cls.left_sec_x0, row_lines = True, has_header = False)
+        return key_information
 
     @classmethod
     def get_sections(cls, elements, font_lower_tsh, reverse = False, **kwargs):

@@ -1,4 +1,4 @@
-__author__ = ['Pei Kaiyu', 'Chenlong']
+__author__ = ['Victoria Barenne']
 __version__ = 'v2.0'
 
 
